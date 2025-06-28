@@ -5,8 +5,11 @@ A desktop Yahtzee game implemented in Java using JavaFX.
 ## Features
 - Classic Yahtzee gameplay
 - Keyboard controls for rolling, holding dice, and selecting scores
-- Simple graphical interface (JavaFX Canvas)
+- Simple, modern graphical interface (JavaFX Canvas)
 - Dice images (or fallback to numbers if images are missing)
+- **Improved UI layout:** All components are centered and non-overlapping, with clear spacing for a professional look
+- **Hold indicators (HLD) are now centered above each die and never overlap**
+- **Score, status, and total positions are visually balanced**
 
 ## Controls
 - **1-5**: Toggle hold for each die
@@ -33,7 +36,9 @@ A desktop Yahtzee game implemented in Java using JavaFX.
 
 ## Notes
 - If you do not have dice images, the game will display numbers instead.
-- The UI is scaled for a 400x400 window.
+- The UI is scaled for a 500x500 window and is visually balanced for clarity.
+- **HLD indicators** are always centered above each die and never overlap, even if all dice are held.
+- **Total score** is shown at the top left, **status messages** (e.g., GAME START) at the top right, and **Rolls/Score** at the bottom left.
 
 ## License
 MIT License
