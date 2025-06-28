@@ -1,4 +1,3 @@
-
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
@@ -74,8 +73,8 @@ public class YahtzeeFX extends Application implements Runnable {
      */
     public void start(Stage primaryStage) {
         Pane root = new Pane();
-        int CANVAS_WIDTH = 400;
-        int CANVAS_HEIGHT = 400;
+        int CANVAS_WIDTH = 500;
+        int CANVAS_HEIGHT = 500;
         canvas = new Canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
         gc = canvas.getGraphicsContext2D();
         gc.setFont(javafx.scene.text.Font.font("Arial", javafx.scene.text.FontWeight.BOLD, 16));
@@ -396,86 +395,104 @@ public class YahtzeeFX extends Application implements Runnable {
      * Handles drawing the title, end, and main game screens, including dice, scores, and messages.
      */
     public void draw() {
-        gc.clearRect(0, 0, 400, 400);
-        gc.setFont(javafx.scene.text.Font.font("Arial", javafx.scene.text.FontWeight.BOLD, 16));
+        gc.clearRect(0, 0, 500, 500);
+        gc.setFont(javafx.scene.text.Font.font("Arial", javafx.scene.text.FontWeight.BOLD, 18));
         switch (gameStatus) {
             case GAME_TITLE:
                 gc.setFill(Color.GRAY);
-                gc.fillRect(0, 0, 400, 400);
+                gc.fillRect(0, 0, 500, 500);
                 gc.setFill(Color.YELLOW);
-                gc.fillText("JYahtzee", 140, 60);
+                gc.fillText("JYahtzee", 200, 120);
                 gc.setFill(Color.RED);
-                gc.fillText("PRESS ENTER", 110, 100);
+                gc.fillText("PRESS ENTER", 170, 180);
                 gc.setFill(Color.BLUE);
-                gc.fillText("(c)2025", 150, 140);
-                gc.fillText("YAHAYUTA", 120, 170);
+                gc.fillText("(c)2025", 220, 240);
+                gc.fillText("YAHAYUTA", 190, 280);
                 break;
             case GAME_END:
                 gc.setFill(Color.GRAY);
-                gc.fillRect(0, 0, 400, 400);
+                gc.fillRect(0, 0, 500, 500);
                 gc.setFill(Color.BLUE);
-                gc.fillText("GAME OVER", 130, 100);
+                gc.fillText("GAME OVER", 190, 150);
                 gc.setFill(Color.YELLOW);
-                gc.fillText("YOUR SCORE IS " + total + ".", 80, 140);
+                gc.fillText("YOUR SCORE IS " + total + ".", 140, 220);
                 break;
             case GAME_OPEN:
                 gc.setFill(Color.GRAY);
-                gc.fillRect(0, 0, 400, 400);
-                int x = 30, x2 = 30, y2 = 60;
-                // Dice row
-                for (int c = 0; c < 5; c++) {
-                    if (card[cardnum[c]] != null) {
-                        gc.drawImage(card[cardnum[c]], x, 220, 48, 48);
-                    } else {
-                        gc.setFill(Color.WHITE);
-                        gc.fillRect(x, 220, 48, 48);
-                        gc.setFill(Color.BLACK);
-                        gc.strokeRect(x, 220, 48, 48);
-                        gc.fillText(String.valueOf(cardnum[c] + 1), x + 16, 250);
-                    }
-                    x += 66;
+                gc.fillRect(0, 0, 500, 500);
+                // Score columns higher
+                int leftColX = 70;
+                int rightColX = 350;
+                int scoreStartY = 60;
+                int y2 = scoreStartY;
+                // Status message at the very top of right column
+                int msgX = rightColX;
+                int msgY = 30;
+                gc.setFill(Color.BLUE);
+                if (goflush) {
+                    gc.setFill(Color.YELLOW);
+                    gc.fillText("Rolling...", msgX, msgY);
+                    gc.fillText("PRESS STOP", msgX, msgY + 25);
+                    gc.setFill(Color.BLUE);
+                } else if (initflag) {
+                    gc.setFill(Color.YELLOW);
+                    gc.fillText("PRESS ROLL", msgX, msgY);
+                    gc.setFill(Color.BLUE);
+                } else {
+                    gc.fillText("GAME START", msgX, msgY);
                 }
                 // Score categories left
                 for (int c1 = 0; c1 < 6; c1++) {
                     gc.setFill(scoreused[c1] ? Color.WHITE : Color.BLACK);
                     if (currentscorechkd == c1) gc.setFill(Color.RED);
-                    gc.fillText(scoredisp[c1], x2, y2);
-                    y2 += 26;
+                    gc.fillText(scoredisp[c1], leftColX, y2);
+                    y2 += 35;
                 }
-                y2 -= 156;
-                x2 += 120;
                 // Score categories right
+                y2 = scoreStartY + 35; // leave space for status message
                 for (int c2 = 6; c2 < 13; c2++) {
                     gc.setFill(scoreused[c2] ? Color.WHITE : Color.BLACK);
                     if (currentscorechkd == c2) gc.setFill(Color.RED);
-                    gc.fillText(scoredisp[c2], x2, y2);
-                    y2 += 26;
+                    gc.fillText(scoredisp[c2], rightColX, y2);
+                    y2 += 35;
                 }
-                y2 -= 182;
-                x2 -= 120;
-                gc.setFill(Color.BLUE);
-                gc.fillText("Total:" + total, 30, 35);
-                if (bonusflag) gc.fillText("BONUS35", 250, 35);
-                if (goflush) {
-                    gc.setFill(Color.YELLOW);
-                    gc.fillText("Rolling...", 250, 70);
-                    gc.fillText("PRESS STOP", 250, 100);
-                    gc.setFill(Color.BLUE);
+                // Dice row lower
+                int diceWidth = 60;
+                int diceGap = 30;
+                int diceCount = 5;
+                int totalDiceWidth = diceCount * diceWidth + (diceCount - 1) * diceGap;
+                int diceStartX = (500 - totalDiceWidth) / 2;
+                int diceY = 320;
+                int x = diceStartX;
+                for (int c = 0; c < 5; c++) {
+                    if (card[cardnum[c]] != null) {
+                        gc.drawImage(card[cardnum[c]], x, diceY, diceWidth, diceWidth);
+                    } else {
+                        gc.setFill(Color.WHITE);
+                        gc.fillRect(x, diceY, diceWidth, diceWidth);
+                        gc.setFill(Color.BLACK);
+                        gc.strokeRect(x, diceY, diceWidth, diceWidth);
+                        gc.fillText(String.valueOf(cardnum[c] + 1), x + 20, diceY + 40);
+                    }
+                    x += diceWidth + diceGap;
                 }
-                if (initflag) {
-                    gc.setFill(Color.YELLOW);
-                    gc.fillText("PRESS ROLL", 250, 100);
-                    gc.setFill(Color.BLUE);
-                } else {
-                    gc.fillText("GAME START", 250, 130);
-                    gc.fillText("Rolls:" + chance, 30, 340);
-                    gc.fillText("Score:" + (selectedscr1 + selectedscr2), 250, 340);
-                }
-                x = 30;
+                // HLD indicators only above dice, centered and higher
+                x = diceStartX;
                 for (int i = 0; i < 5; i++) {
-                    if (hold[i]) gc.fillText("HLD", x, 210);
-                    x += 66;
+                    if (hold[i]) {
+                        gc.setFill(Color.RED);
+                        gc.fillText("HLD", x + (diceWidth/2 - 18), diceY - 30);
+                        gc.setFill(Color.BLUE);
+                    }
+                    x += diceWidth + diceGap;
                 }
+                // Total at top left
+                gc.setFill(Color.BLUE);
+                gc.fillText("Total:" + total, 50, 40);
+                if (bonusflag) gc.fillText("BONUS35", 350, 40);
+                // Bottom status - left: Rolls and Score
+                gc.setFill(Color.BLUE);
+                gc.fillText("Rolls:" + chance + "    Score:" + (selectedscr1 + selectedscr2), 50, 470);
                 break;
             default:
                 break;
