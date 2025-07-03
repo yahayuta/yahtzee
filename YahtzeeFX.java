@@ -16,6 +16,7 @@ public class YahtzeeFX extends Application implements Runnable {
     final int GAME_TITLE = 0;
     final int GAME_OPEN = 1;
     final int GAME_END = 2;
+    final int GAME_PAUSED = 3;
     final int SCR_1 = 0;
     final int SCR_2 = 1;
     final int SCR_3 = 2;
@@ -38,7 +39,11 @@ public class YahtzeeFX extends Application implements Runnable {
     Image[] card = new Image[6];
     Random rnd = new Random();
     Thread thIyahtzee = null;
-    String[] scoredisp = {"1", "2", "3", "4", "5", "6", "3card", "4card", "Full", "SStght", "LStght", "Chance", "Yahtzee"};
+    String[] scoredisp = {"Aces", "Twos", "Threes", "Fours", "Fives", "Sixes", "3 of a Kind", "4 of a Kind", "Full House", "Small Straight", "Large Straight", "Chance", "Yahtzee"};
+    String[] categoryDescriptions = {
+        "Sum of all 1s", "Sum of all 2s", "Sum of all 3s", "Sum of all 4s", "Sum of all 5s", "Sum of all 6s",
+        "Sum of all dice if 3+ same", "Sum of all dice if 4+ same", "25 points for 3+2", "30 points for 4 in sequence", "40 points for 5 in sequence", "Sum of all dice", "50 points for 5 same"
+    };
 
     // Game state variables
     int gameStatus = GAME_TITLE;
@@ -53,6 +58,15 @@ public class YahtzeeFX extends Application implements Runnable {
     int X = 5;
     int X2 = 5;
     int Y2 = 20;
+    
+    // Score tracking for each category
+    int[] categoryScores = new int[13];
+    
+    // New game features
+    boolean showTooltips = false;
+    boolean showDiceValues = true;
+    int tooltipTimer = 0;
+    String currentTooltip = "";
 
     // Flags
     boolean goflush = false;
@@ -73,14 +87,21 @@ public class YahtzeeFX extends Application implements Runnable {
      */
     public void start(Stage primaryStage) {
         Pane root = new Pane();
-        int CANVAS_WIDTH = 500;
-        int CANVAS_HEIGHT = 500;
+        int CANVAS_WIDTH = 600;
+        int CANVAS_HEIGHT = 600;
         canvas = new Canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
         gc = canvas.getGraphicsContext2D();
-        gc.setFont(javafx.scene.text.Font.font("Arial", javafx.scene.text.FontWeight.BOLD, 16));
+        
+        // Set a basic font that should work with JavaFX 24.0.1
+        try {
+            gc.setFont(javafx.scene.text.Font.font(16));
+        } catch (Exception e) {
+            // If that fails, use default font
+        }
+        
         root.getChildren().add(canvas);
         Scene scene = new Scene(root, CANVAS_WIDTH, CANVAS_HEIGHT);
-        primaryStage.setTitle("YahtzeeFX");
+        primaryStage.setTitle("YahtzeeFX - Enhanced Edition");
         primaryStage.setScene(scene);
         primaryStage.show();
 
@@ -94,6 +115,8 @@ public class YahtzeeFX extends Application implements Runnable {
                 card[i] = null;
             }
         }
+        
+
 
         for (int i = 0; i < 5; i++) {
             cardnum[i] = Math.abs(rnd.nextInt()) % 6;
@@ -127,83 +150,180 @@ public class YahtzeeFX extends Application implements Runnable {
     }
 
     /**
-     * Handles keyboard input for all game states (title, open, end).
+     * Handles keyboard input for all game states (title, open, end, paused).
      * @param code The KeyCode pressed
      */
     private void handleKey(KeyCode code) {
+        System.out.println("=== KEY PRESSED: " + code + " (Game Status: " + gameStatus + ") ===");
+        
         switch (gameStatus) {
             case GAME_TITLE:
                 if (code == KeyCode.ENTER) {
+                    System.out.println("Starting game from title screen");
                     gameStatus = GAME_OPEN;
                 }
                 break;
             case GAME_END:
                 if (code == KeyCode.ENTER) {
-                    for (int i1 = 0; i1 < 13; i1++) scoreused[i1] = false;
+                    System.out.println("Starting new game from end screen");
+                    startNewGame();
+                }
+                break;
+            case GAME_PAUSED:
+                if (code == KeyCode.P) {
+                    System.out.println("Resuming game from pause");
                     gameStatus = GAME_OPEN;
-                    total = 0;
-                    selectedscr1 = 0;
-                    selectedscr2 = 0;
-                    chkscore1();
-                    chkscore2();
+                } else if (code == KeyCode.N) {
+                    System.out.println("Starting new game from pause menu");
+                    startNewGame();
                 }
                 break;
             case GAME_OPEN:
-                if (code == KeyCode.DIGIT1 && !goflush) hold[0] = !hold[0];
-                if (code == KeyCode.DIGIT2 && !goflush) hold[1] = !hold[1];
-                if (code == KeyCode.DIGIT3 && !goflush) hold[2] = !hold[2];
-                if (code == KeyCode.DIGIT4 && !goflush) hold[3] = !hold[3];
-                if (code == KeyCode.DIGIT5 && !goflush) hold[4] = !hold[4];
+                if (code == KeyCode.DIGIT1 && !goflush) {
+                    hold[0] = !hold[0];
+                    System.out.println("Dice 1 hold toggled: " + hold[0]);
+                }
+                if (code == KeyCode.DIGIT2 && !goflush) {
+                    hold[1] = !hold[1];
+                    System.out.println("Dice 2 hold toggled: " + hold[1]);
+                }
+                if (code == KeyCode.DIGIT3 && !goflush) {
+                    hold[2] = !hold[2];
+                    System.out.println("Dice 3 hold toggled: " + hold[2]);
+                }
+                if (code == KeyCode.DIGIT4 && !goflush) {
+                    hold[3] = !hold[3];
+                    System.out.println("Dice 4 hold toggled: " + hold[3]);
+                }
+                if (code == KeyCode.DIGIT5 && !goflush) {
+                    hold[4] = !hold[4];
+                    System.out.println("Dice 5 hold toggled: " + hold[4]);
+                }
                 if (code == KeyCode.SPACE) {
+                    System.out.println("SPACE pressed - Rolls left: " + chance + ", goflush: " + goflush + ", flushout: " + flushout);
                     if (chance > 0 && !flushout) {
                         if (!goflush) {
                             goflush = true;
-                            if (!initflag) chance--;
-                            else initflag = false;
+                            if (!initflag) {
+                                chance--;
+                                System.out.println("Starting roll, chance reduced to: " + chance);
+                            } else {
+                                initflag = false;
+                                System.out.println("Starting roll, initflag set to false");
+                            }
                         } else if (goflush) {
                             goflush = false;
+                            System.out.println("Stopping roll, calculating scores");
                             chkscore1();
                             chkscore2();
                         }
                     } else if (goflush) {
                         goflush = false;
+                        System.out.println("Stopping roll (no more chances), calculating scores");
                         chkscore1();
                         chkscore2();
                     } else {
                         flushout = true;
+                        System.out.println("No more rolls available, flushout set to true");
                     }
                 }
                 if (code == KeyCode.UP) {
+                    System.out.println("Moving UP from category " + currentscorechkd + " (" + scoredisp[currentscorechkd] + ")");
                     currentscorechkd--;
                     if (currentscorechkd < SCR_1) currentscorechkd = SCR_YAHTZEE;
                     while (scoreused[currentscorechkd]) {
                         currentscorechkd--;
                         if (currentscorechkd < SCR_1) currentscorechkd = SCR_YAHTZEE;
                     }
+                    System.out.println("Selected category: " + currentscorechkd + " (" + scoredisp[currentscorechkd] + ")");
                     chkscore1();
                     chkscore2();
+                    showTooltip();
                 }
                 if (code == KeyCode.DOWN) {
+                    System.out.println("Moving DOWN from category " + currentscorechkd + " (" + scoredisp[currentscorechkd] + ")");
                     currentscorechkd++;
                     if (currentscorechkd > SCR_YAHTZEE) currentscorechkd = SCR_1;
                     while (scoreused[currentscorechkd]) {
                         currentscorechkd++;
                         if (currentscorechkd > SCR_YAHTZEE) currentscorechkd = SCR_1;
                     }
+                    System.out.println("Selected category: " + currentscorechkd + " (" + scoredisp[currentscorechkd] + ")");
                     chkscore1();
                     chkscore2();
+                    showTooltip();
                 }
                 if (code == KeyCode.ENTER) {
+                    System.out.println("ENTER pressed - attempting to score category " + currentscorechkd);
                     enterscr();
+                }
+                if (code == KeyCode.P) {
+                    System.out.println("Pausing game");
+                    gameStatus = GAME_PAUSED;
+                }
+                if (code == KeyCode.N) {
+                    System.out.println("Starting new game from game screen");
+                    startNewGame();
+                }
+                if (code == KeyCode.T) {
+                    showTooltips = !showTooltips;
+                    System.out.println("Tooltips toggled: " + showTooltips);
+                }
+                if (code == KeyCode.D) {
+                    showDiceValues = !showDiceValues;
+                    System.out.println("Dice values toggled: " + showDiceValues);
                 }
                 break;
             default:
+                System.out.println("Unknown game status: " + gameStatus);
                 break;
         }
         if (code == KeyCode.ESCAPE) {
+            System.out.println("ESC pressed - exiting game");
             System.exit(0);
         }
         draw();
+    }
+    
+    /**
+     * Starts a new game, resetting all game state
+     */
+    private void startNewGame() {
+        System.out.println("=== STARTING NEW GAME ===");
+        for (int i = 0; i < 13; i++) {
+            scoreused[i] = false;
+            categoryScores[i] = 0;
+        }
+        gameStatus = GAME_OPEN;
+        total = 0;
+        selectedscr1 = 0;
+        selectedscr2 = 0;
+        bonuscount = 0;
+        bonusflag = false;
+        chance = 3;
+        gameleft = 13;
+        initflag = false;
+        goflush = false;
+        flushout = false;
+        for (int i = 0; i < 5; i++) {
+            hold[i] = false;
+            cardnum[i] = Math.abs(rnd.nextInt()) % 6;
+        }
+        currentscorechkd = SCR_1;
+        System.out.println("New game initialized - Dice: [" + (cardnum[0]+1) + "," + (cardnum[1]+1) + "," + (cardnum[2]+1) + "," + (cardnum[3]+1) + "," + (cardnum[4]+1) + "]");
+        chkscore1();
+        chkscore2();
+        showTooltip();
+    }
+    
+    /**
+     * Shows tooltip for current category
+     */
+    private void showTooltip() {
+        if (showTooltips) {
+            currentTooltip = categoryDescriptions[currentscorechkd];
+            tooltipTimer = 60; // Show for 3 seconds (60 * 50ms)
+        }
     }
 
     @Override
@@ -217,8 +337,25 @@ public class YahtzeeFX extends Application implements Runnable {
             } catch (Throwable th) {
                 break;
             }
-            flushcards();
-            draw();
+            try {
+                flushcards();
+                updateTooltips();
+                draw();
+            } catch (Exception e) {
+                // Continue running even if there's an error
+            }
+        }
+    }
+    
+    /**
+     * Updates tooltip timing
+     */
+    private void updateTooltips() {
+        if (tooltipTimer > 0) {
+            tooltipTimer--;
+            if (tooltipTimer == 0) {
+                currentTooltip = "";
+            }
         }
     }
 
@@ -227,11 +364,15 @@ public class YahtzeeFX extends Application implements Runnable {
      */
     public void flushcards() {
         if (goflush) {
+            System.out.println("Rolling dice - Held: [" + hold[0] + "," + hold[1] + "," + hold[2] + "," + hold[3] + "," + hold[4] + "]");
             for (int i = 0; i < 5; i++) {
                 if (!hold[i]) {
+                    int oldValue = cardnum[i];
                     cardnum[i] = Math.abs(rnd.nextInt()) % 6;
+                    System.out.println("Dice " + (i+1) + " rolled: " + (oldValue+1) + " -> " + (cardnum[i]+1));
                 }
             }
+            System.out.println("New dice values: [" + (cardnum[0]+1) + "," + (cardnum[1]+1) + "," + (cardnum[2]+1) + "," + (cardnum[3]+1) + "," + (cardnum[4]+1) + "]");
         }
     }
 
@@ -246,6 +387,8 @@ public class YahtzeeFX extends Application implements Runnable {
         else if (currentscorechkd == SCR_5) selectedscr1 = chknums(5, SCR_5, cardnum);
         else if (currentscorechkd == SCR_6) selectedscr1 = chknums(6, SCR_6, cardnum);
         else selectedscr1 = 0;
+        
+        System.out.println("Score1 calculated for " + scoredisp[currentscorechkd] + ": " + selectedscr1);
     }
 
     /**
@@ -260,6 +403,7 @@ public class YahtzeeFX extends Application implements Runnable {
         for (int i = 0; i < 5; i++) {
             if (inscr[i] == actscr - 1) scre += actscr;
         }
+        System.out.println("chknums: Looking for " + actscr + "s, found " + (scre/actscr) + " dice, score = " + scre);
         return scre;
     }
 
@@ -272,6 +416,9 @@ public class YahtzeeFX extends Application implements Runnable {
         int hldscr = 0;
         int pairChkdStatus = 0;
         for (int c = 0; c < 5; c++) subscr[c] = cardnum[c];
+        
+        System.out.println("Score2 calculation - Original dice: [" + (subscr[0]+1) + "," + (subscr[1]+1) + "," + (subscr[2]+1) + "," + (subscr[3]+1) + "," + (subscr[4]+1) + "]");
+        
         for (int i = 0; i < 4; i++) {
             for (int ii = 0; ii < 4; ii++) {
                 int first = subscr[ii];
@@ -282,7 +429,12 @@ public class YahtzeeFX extends Application implements Runnable {
                 }
             }
         }
+        
+        System.out.println("Score2 calculation - Sorted dice: [" + (subscr[0]+1) + "," + (subscr[1]+1) + "," + (subscr[2]+1) + "," + (subscr[3]+1) + "," + (subscr[4]+1) + "]");
+        
         pairChkdStatus = rtnchpair(subscr);
+        System.out.println("Pair check status: " + pairChkdStatus + " (0=none, 1=3kind, 2=4kind, 3=full, 4=yahtzee)");
+        
         if (currentscorechkd == SCR_3CARD) {
             if (pairChkdStatus == PCK_3CARD || pairChkdStatus == PCK_4CARD || pairChkdStatus == PCK_FULL || pairChkdStatus == PCK_YAHTZEE) {
                 for (int i12 = 0; i12 < 5; i12++) {
@@ -326,6 +478,8 @@ public class YahtzeeFX extends Application implements Runnable {
             if (pairChkdStatus == PCK_YAHTZEE) selectedscr2 = 50;
             else selectedscr2 = 0;
         } else selectedscr2 = 0;
+        
+        System.out.println("Score2 calculated for " + scoredisp[currentscorechkd] + ": " + selectedscr2);
     }
 
     /**
@@ -352,6 +506,7 @@ public class YahtzeeFX extends Application implements Runnable {
                 }
             }
         }
+        System.out.println("rtnchpair: pairs=" + pair + ", three=" + threecardflag + ", four=" + fourcardflag + ", yahtzee=" + yahtflag);
         if (yahtflag) return PCK_YAHTZEE;
         if (fourcardflag) return PCK_4CARD;
         else if (!fourcardflag && pair == 3) return PCK_FULL;
@@ -364,26 +519,46 @@ public class YahtzeeFX extends Application implements Runnable {
      * Updates total, bonus, and resets state for the next round or ends the game.
      */
     public void enterscr() {
+        System.out.println("=== ENTERING SCORE ===");
+        System.out.println("Category: " + scoredisp[currentscorechkd] + " (used: " + scoreused[currentscorechkd] + ", initflag: " + initflag + ")");
+        System.out.println("Scores: selectedscr1=" + selectedscr1 + ", selectedscr2=" + selectedscr2);
+        
         if (!scoreused[currentscorechkd] && !initflag) {
-            total += selectedscr1;
-            total += selectedscr2;
+            int categoryScore = selectedscr1 + selectedscr2;
+            categoryScores[currentscorechkd] = categoryScore;
+            total += categoryScore;
             bonuscount += selectedscr1;
+            
+            System.out.println("Category score: " + categoryScore + ", Total: " + total + ", Bonus count: " + bonuscount);
+            
             if (bonuscount > 62 && !bonusflag) {
                 total = total + 35;
                 bonusflag = true;
+                System.out.println("BONUS 35 ADDED! New total: " + total);
             }
+            
             gameleft--;
             scoreused[currentscorechkd] = true;
             flushout = false;
             initflag = true;
             chance = 3;
+            
+            System.out.println("Game state updated - Game left: " + gameleft + ", Chance: " + chance + ", Initflag: " + initflag);
+            
             currentscorechkd = SCR_1;
             while (scoreused[currentscorechkd] && currentscorechkd < SCR_YAHTZEE) {
                 currentscorechkd++;
             }
+            System.out.println("Next available category: " + currentscorechkd + " (" + scoredisp[currentscorechkd] + ")");
+            
             for (int i = 0; i < 5; i++) hold[i] = false;
+            System.out.println("All dice holds reset");
+        } else {
+            System.out.println("Score entry blocked - Category used: " + scoreused[currentscorechkd] + ", Initflag: " + initflag);
         }
+        
         if (gameleft == 0) {
+            System.out.println("=== GAME OVER ===");
             bonusflag = false;
             gameStatus = GAME_END;
             gameleft = 13;
@@ -395,108 +570,352 @@ public class YahtzeeFX extends Application implements Runnable {
      * Handles drawing the title, end, and main game screens, including dice, scores, and messages.
      */
     public void draw() {
-        gc.clearRect(0, 0, 500, 500);
-        gc.setFont(javafx.scene.text.Font.font("Arial", javafx.scene.text.FontWeight.BOLD, 18));
-        switch (gameStatus) {
-            case GAME_TITLE:
-                gc.setFill(Color.GRAY);
-                gc.fillRect(0, 0, 500, 500);
-                gc.setFill(Color.YELLOW);
-                gc.fillText("JYahtzee", 200, 120);
-                gc.setFill(Color.RED);
-                gc.fillText("PRESS ENTER", 170, 180);
-                gc.setFill(Color.BLUE);
-                gc.fillText("(c)2025", 220, 240);
-                gc.fillText("YAHAYUTA", 190, 280);
-                break;
-            case GAME_END:
-                gc.setFill(Color.GRAY);
-                gc.fillRect(0, 0, 500, 500);
-                gc.setFill(Color.BLUE);
-                gc.fillText("GAME OVER", 190, 150);
-                gc.setFill(Color.YELLOW);
-                gc.fillText("YOUR SCORE IS " + total + ".", 140, 220);
-                break;
-            case GAME_OPEN:
-                gc.setFill(Color.GRAY);
-                gc.fillRect(0, 0, 500, 500);
-                // Score columns higher
-                int leftColX = 70;
-                int rightColX = 350;
-                int scoreStartY = 60;
-                int y2 = scoreStartY;
-                // Status message at the very top of right column
-                int msgX = rightColX;
-                int msgY = 30;
-                gc.setFill(Color.BLUE);
-                if (goflush) {
-                    gc.setFill(Color.YELLOW);
-                    gc.fillText("Rolling...", msgX, msgY);
-                    gc.fillText("PRESS STOP", msgX, msgY + 25);
-                    gc.setFill(Color.BLUE);
-                } else if (initflag) {
-                    gc.setFill(Color.YELLOW);
-                    gc.fillText("PRESS ROLL", msgX, msgY);
-                    gc.setFill(Color.BLUE);
-                } else {
-                    gc.fillText("GAME START", msgX, msgY);
-                }
-                // Score categories left
-                for (int c1 = 0; c1 < 6; c1++) {
-                    gc.setFill(scoreused[c1] ? Color.WHITE : Color.BLACK);
-                    if (currentscorechkd == c1) gc.setFill(Color.RED);
-                    gc.fillText(scoredisp[c1], leftColX, y2);
-                    y2 += 35;
-                }
-                // Score categories right
-                y2 = scoreStartY + 35; // leave space for status message
-                for (int c2 = 6; c2 < 13; c2++) {
-                    gc.setFill(scoreused[c2] ? Color.WHITE : Color.BLACK);
-                    if (currentscorechkd == c2) gc.setFill(Color.RED);
-                    gc.fillText(scoredisp[c2], rightColX, y2);
-                    y2 += 35;
-                }
-                // Dice row lower
-                int diceWidth = 60;
-                int diceGap = 30;
-                int diceCount = 5;
-                int totalDiceWidth = diceCount * diceWidth + (diceCount - 1) * diceGap;
-                int diceStartX = (500 - totalDiceWidth) / 2;
-                int diceY = 320;
-                int x = diceStartX;
-                for (int c = 0; c < 5; c++) {
-                    if (card[cardnum[c]] != null) {
-                        gc.drawImage(card[cardnum[c]], x, diceY, diceWidth, diceWidth);
-                    } else {
-                        gc.setFill(Color.WHITE);
-                        gc.fillRect(x, diceY, diceWidth, diceWidth);
-                        gc.setFill(Color.BLACK);
-                        gc.strokeRect(x, diceY, diceWidth, diceWidth);
-                        gc.fillText(String.valueOf(cardnum[c] + 1), x + 20, diceY + 40);
-                    }
-                    x += diceWidth + diceGap;
-                }
-                // HLD indicators only above dice, centered and higher
-                x = diceStartX;
-                for (int i = 0; i < 5; i++) {
-                    if (hold[i]) {
-                        gc.setFill(Color.RED);
-                        gc.fillText("HLD", x + (diceWidth/2 - 18), diceY - 30);
-                        gc.setFill(Color.BLUE);
-                    }
-                    x += diceWidth + diceGap;
-                }
-                // Total at top left
-                gc.setFill(Color.BLUE);
-                gc.fillText("Total:" + total, 50, 40);
-                if (bonusflag) gc.fillText("BONUS35", 350, 40);
-                // Bottom status - left: Rolls and Score
-                gc.setFill(Color.BLUE);
-                gc.fillText("Rolls:" + chance + "    Score:" + (selectedscr1 + selectedscr2), 50, 470);
-                break;
-            default:
-                break;
+        try {
+            gc.clearRect(0, 0, 600, 600);
+            
+            // Add a simple background to make sure rendering is working
+            gc.setFill(Color.BLACK);
+            gc.fillRect(0, 0, 600, 600);
+            
+            switch (gameStatus) {
+                case GAME_TITLE:
+                    drawSimpleTitleScreen();
+                    break;
+                case GAME_END:
+                    drawSimpleEndScreen();
+                    break;
+                case GAME_PAUSED:
+                    drawSimplePausedScreen();
+                    break;
+                case GAME_OPEN:
+                    drawSimpleGameScreen();
+                    break;
+                default:
+                    break;
+            }
+        } catch (Exception e) {
+            // If anything fails, draw a basic fallback
+            drawFallbackScreen();
         }
+    }
+    
+    /**
+     * Fallback drawing method that uses only the most basic operations
+     */
+    private void drawFallbackScreen() {
+        gc.clearRect(0, 0, 600, 600);
+        gc.setFill(Color.WHITE);
+        gc.fillRect(0, 0, 600, 600);
+        gc.setFill(Color.BLACK);
+        gc.fillText("YAHTZEE GAME", 250, 300);
+        gc.fillText("Press ENTER to start", 250, 350);
+    }
+    
+    /**
+     * Draws a simple title screen without complex font operations
+     */
+    private void drawSimpleTitleScreen() {
+        // Background
+        gc.setFill(Color.DARKBLUE);
+        gc.fillRect(0, 0, 600, 600);
+        
+        // Title - make it much larger and more visible
+        gc.setFill(Color.YELLOW);
+        gc.fillText("YAHTZEE", 250, 150);
+        
+        // Subtitle
+        gc.setFill(Color.WHITE);
+        gc.fillText("Enhanced Edition", 220, 180);
+        
+        // Instructions
+        gc.setFill(Color.RED);
+        gc.fillText("PRESS ENTER TO START", 200, 250);
+        
+        // Controls info
+        gc.setFill(Color.LIGHTGRAY);
+        gc.fillText("Controls: 1-5 Hold | SPACE Roll | UP/DOWN Select | ENTER Score", 100, 300);
+        gc.fillText("P:Pause N:New T:Tooltips D:DiceValues ESC:Quit", 150, 320);
+        
+        // Credits
+        gc.setFill(Color.GRAY);
+        gc.fillText("(c) 2025 YAHAYUTA", 220, 380);
+        
+
+    }
+    
+    /**
+     * Draws a simple end game screen
+     */
+    private void drawSimpleEndScreen() {
+        // Background
+        gc.setFill(Color.DARKGRAY);
+        gc.fillRect(0, 0, 600, 600);
+        
+        // Game Over title
+        gc.setFill(Color.RED);
+        gc.fillText("GAME OVER", 200, 150);
+        
+        // Final score
+        gc.setFill(Color.YELLOW);
+        gc.fillText("FINAL SCORE: " + total, 180, 220);
+        
+        // Score breakdown
+        gc.setFill(Color.LIGHTGRAY);
+        int upperTotal = 0;
+        for (int i = 0; i < 6; i++) {
+            upperTotal += categoryScores[i];
+        }
+        gc.fillText("Upper Section: " + upperTotal, 200, 260);
+        gc.fillText("Lower Section: " + (total - upperTotal - (bonusflag ? 35 : 0)), 200, 280);
+        if (bonusflag) {
+            gc.fillText("Bonus: 35", 200, 300);
+        }
+        
+        // Restart instruction
+        gc.setFill(Color.GREEN);
+        gc.fillText("PRESS ENTER TO PLAY AGAIN", 150, 350);
+    }
+    
+    /**
+     * Draws a simple paused game screen
+     */
+    private void drawSimplePausedScreen() {
+        // Semi-transparent overlay
+        gc.setFill(Color.BLACK);
+        gc.fillRect(0, 0, 600, 600);
+        
+        // Pause menu background
+        gc.setFill(Color.DARKGRAY);
+        gc.fillRect(150, 200, 300, 200);
+        
+        // Pause title
+        gc.setFill(Color.WHITE);
+        gc.fillText("GAME PAUSED", 220, 250);
+        
+        // Menu options
+        gc.setFill(Color.GREEN);
+        gc.fillText("P: Resume Game", 200, 290);
+        gc.setFill(Color.YELLOW);
+        gc.fillText("N: New Game", 200, 320);
+        gc.setFill(Color.RED);
+        gc.fillText("ESC: Quit Game", 200, 350);
+    }
+    
+    /**
+     * Draws the main game screen with simplified rendering
+     */
+    private void drawSimpleGameScreen() {
+        // Background
+        gc.setFill(Color.DARKGRAY);
+        gc.fillRect(0, 0, 600, 600);
+        
+        // Header section
+        drawSimpleHeader();
+        
+        // Score sections
+        drawSimpleScoreSections();
+        
+        // Dice section
+        drawSimpleDiceSection();
+        
+        // Status bar
+        drawSimpleStatusBar();
+    }
+    
+    /**
+     * Draws the header with total score and game status
+     */
+    private void drawSimpleHeader() {
+        // Header background
+        gc.setFill(Color.GRAY);
+        gc.fillRect(0, 0, 600, 50);
+        
+        // Total score
+        gc.setFill(Color.YELLOW);
+        gc.fillText("Total: " + total, 20, 35);
+        
+        // Bonus indicator
+        if (bonusflag) {
+            gc.setFill(Color.GREEN);
+            gc.fillText("BONUS +35", 150, 35);
+        }
+        
+        // Game status
+        if (goflush) {
+            gc.setFill(Color.YELLOW);
+            gc.fillText("ROLLING... PRESS SPACE TO STOP", 300, 35);
+        } else if (initflag) {
+            gc.setFill(Color.GREEN);
+            gc.fillText("PRESS SPACE TO ROLL", 300, 35);
+        } else {
+            gc.setFill(Color.WHITE);
+            gc.fillText("GAME START - PRESS SPACE TO ROLL", 300, 35);
+        }
+    }
+    
+    /**
+     * Draws the score sections with simplified rendering
+     */
+    private void drawSimpleScoreSections() {
+        // Left column (Upper section)
+        drawSimpleScoreColumn(50, 70, 0, 6, "UPPER SECTION");
+        
+        // Right column (Lower section)
+        drawSimpleScoreColumn(350, 70, 6, 13, "LOWER SECTION");
+    }
+    
+    /**
+     * Draws a column of score categories with simplified rendering
+     */
+    private void drawSimpleScoreColumn(int x, int y, int startIdx, int endIdx, String title) {
+        // Column title
+        gc.setFill(Color.WHITE);
+        gc.fillText(title, x, y);
+        
+        int currentY = y + 30;
+        
+        for (int i = startIdx; i < endIdx; i++) {
+            // Background for selected item
+            if (currentscorechkd == i) {
+                gc.setFill(Color.RED);
+                gc.fillRect(x - 5, currentY - 20, 200, 25);
+            }
+            
+            // Category name
+            if (scoreused[i]) {
+                gc.setFill(Color.GRAY);
+            } else if (currentscorechkd == i) {
+                gc.setFill(Color.WHITE);
+            } else {
+                gc.setFill(Color.LIGHTGRAY);
+            }
+            gc.fillText(scoredisp[i], x, currentY);
+            
+            // Score value
+            if (scoreused[i]) {
+                gc.setFill(Color.YELLOW);
+                gc.fillText(": " + categoryScores[i], x + 80, currentY);
+            } else if (currentscorechkd == i) {
+                int potentialScore = selectedscr1 + selectedscr2;
+                gc.setFill(Color.GREEN);
+                gc.fillText(": " + potentialScore, x + 80, currentY);
+            }
+            
+            currentY += 30;
+        }
+        
+        // Draw tooltip for selected category
+        if (showTooltips && tooltipTimer > 0 && currentscorechkd >= startIdx && currentscorechkd < endIdx) {
+            drawSimpleTooltip(x, y + 200, currentTooltip);
+        }
+    }
+    
+    /**
+     * Draws a simple tooltip
+     */
+    private void drawSimpleTooltip(int x, int y, String text) {
+        // Tooltip background
+        gc.setFill(Color.BLACK);
+        gc.fillRect(x - 5, y - 5, 250, 40);
+        gc.setFill(Color.YELLOW);
+        gc.fillRect(x - 3, y - 3, 246, 36);
+        
+        // Tooltip text
+        gc.setFill(Color.BLACK);
+        gc.fillText(text, x, y + 15);
+    }
+    
+    /**
+     * Draws the dice section with simplified rendering
+     */
+    private void drawSimpleDiceSection() {
+        int diceWidth = 70;
+        int diceGap = 20;
+        int diceCount = 5;
+        int totalDiceWidth = diceCount * diceWidth + (diceCount - 1) * diceGap;
+        int diceStartX = (600 - totalDiceWidth) / 2;
+        int diceY = 400;
+        
+        // Dice section title
+        gc.setFill(Color.WHITE);
+        gc.fillText("DICE", 280, diceY - 20);
+        
+        int x = diceStartX;
+        for (int i = 0; i < 5; i++) {
+            // Dice background with border
+            if (hold[i]) {
+                // Held dice have a red border
+                gc.setFill(Color.RED);
+                gc.fillRect(x - 3, diceY - 3, diceWidth + 6, diceWidth + 6);
+                gc.setFill(Color.PINK);
+                gc.fillRect(x, diceY, diceWidth, diceWidth);
+            } else {
+                // Normal dice have a white border
+                gc.setFill(Color.WHITE);
+                gc.fillRect(x - 2, diceY - 2, diceWidth + 4, diceWidth + 4);
+                gc.setFill(Color.LIGHTGRAY);
+                gc.fillRect(x, diceY, diceWidth, diceWidth);
+            }
+            
+            // Draw die face
+            if (card[cardnum[i]] != null) {
+                gc.drawImage(card[cardnum[i]], x + 5, diceY + 5, diceWidth - 10, diceWidth - 10);
+            } else {
+                // Fallback to number display
+                gc.setFill(Color.BLACK);
+                gc.fillText(String.valueOf(cardnum[i] + 1), x + 25, diceY + 45);
+            }
+            
+            // Show dice value if enabled
+            if (showDiceValues) {
+                gc.setFill(Color.BLUE);
+                gc.fillText("Value: " + (cardnum[i] + 1), x + 5, diceY + diceWidth + 30);
+            }
+            
+            // Hold indicator
+            if (hold[i]) {
+                gc.setFill(Color.RED);
+                gc.fillText("HELD", x + 15, diceY - 10);
+            }
+            
+            // Dice number indicator
+            gc.setFill(Color.GRAY);
+            gc.fillText("(" + (i + 1) + ")", x + 25, diceY + diceWidth + 15);
+            
+            x += diceWidth + diceGap;
+        }
+    }
+    
+    /**
+     * Draws the status bar at the bottom with simplified rendering
+     */
+    private void drawSimpleStatusBar() {
+        // Status bar background
+        gc.setFill(Color.GRAY);
+        gc.fillRect(0, 550, 600, 50);
+        
+        // Rolls remaining
+        gc.setFill(Color.WHITE);
+        gc.fillText("Rolls: " + chance, 20, 575);
+        
+        // Current potential score
+        int potentialScore = selectedscr1 + selectedscr2;
+        gc.setFill(Color.GREEN);
+        gc.fillText("Potential Score: " + potentialScore, 150, 575);
+        
+        // Feature indicators
+        if (showTooltips) {
+            gc.setFill(Color.YELLOW);
+            gc.fillText("Tooltips: ON", 300, 575);
+        }
+        if (showDiceValues) {
+            gc.setFill(Color.CYAN);
+            gc.fillText("Dice Values: ON", 400, 575);
+        }
+        
+        // Controls reminder
+        gc.setFill(Color.LIGHTGRAY);
+        gc.fillText("P:Pause N:New T:Tooltips D:DiceValues", 20, 590);
     }
 
     public static void main(String[] args) {
